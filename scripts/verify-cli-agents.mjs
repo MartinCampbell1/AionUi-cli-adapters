@@ -44,7 +44,8 @@ const agents = [
     label: 'Codex',
     command: 'codex',
     versionArgs: ['--version'],
-    chatSkipped: 'ACP-backed in AionUi; use packaged UI smoke for end-to-end chat.',
+    timeoutMs: 90_000,
+    chatProbe: runCodexChatProbe,
     history: [{ label: 'Codex sessions JSONL', dir: path.join(HOME, '.codex', 'sessions'), ext: '.jsonl' }],
   },
   {
@@ -72,7 +73,9 @@ const agents = [
     command: 'opencode',
     versionArgs: ['--version'],
     statusArgs: ['auth', 'list'],
-    chatSkipped: 'ACP-backed in AionUi; use packaged UI smoke for end-to-end chat.',
+    timeoutMs: 75_000,
+    chatProbe: runOpenCodeChatProbe,
+    clean: cleanOpenCodeOutput,
     history: [{ label: 'OpenCode SQLite DB', file: path.join(HOME, '.local', 'share', 'opencode', 'opencode.db') }],
   },
   {
@@ -97,7 +100,7 @@ function run(command, cmdArgs, options = {}) {
     env: options.env ?? process.env,
     encoding: 'utf8',
     timeout: options.timeoutMs ?? 10_000,
-    maxBuffer: 4 * 1024 * 1024,
+    maxBuffer: options.maxBuffer ?? 4 * 1024 * 1024,
   });
   const elapsedMs = Date.now() - started;
   const stdout = sanitize(result.stdout ?? '');
@@ -149,6 +152,91 @@ function cleanGeminiOutput(text) {
     })
     .join('\n')
     .trim();
+}
+
+function cleanOpenCodeOutput(text) {
+  let lastText = '';
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    try {
+      const event = JSON.parse(trimmed);
+      if (event?.type === 'text' && typeof event.part?.text === 'string') {
+        lastText = event.part.text;
+      }
+    } catch {
+      // OpenCode can print non-JSON diagnostics before JSON events.
+    }
+  }
+
+  return sanitize(lastText || text);
+}
+
+function runCodexChatProbe(agent) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aionui-codex-smoke-'));
+  const lastMessagePath = path.join(tmp, 'last-message.txt');
+
+  try {
+    const result = run(
+      agent.command,
+      [
+        'exec',
+        '--ephemeral',
+        '--ignore-rules',
+        '--skip-git-repo-check',
+        '--sandbox',
+        'read-only',
+        '--cd',
+        tmp,
+        '--output-last-message',
+        lastMessagePath,
+        'Reply with exactly: codex adapter ok',
+      ],
+      {
+        env: cloneEnv(agent),
+        timeoutMs: agent.timeoutMs,
+        maxBuffer: 16 * 1024 * 1024,
+      }
+    );
+
+    if (fs.existsSync(lastMessagePath)) {
+      const lastMessage = sanitize(fs.readFileSync(lastMessagePath, 'utf8'));
+      if (lastMessage) return { ...result, output: lastMessage };
+    }
+
+    return result;
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function runOpenCodeChatProbe(agent) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'aionui-opencode-smoke-'));
+
+  try {
+    return run(
+      agent.command,
+      [
+        'run',
+        '--dir',
+        tmp,
+        '--format',
+        'json',
+        '--title',
+        'aionui-opencode-smoke',
+        'Reply with exactly: opencode adapter ok',
+      ],
+      {
+        env: cloneEnv(agent),
+        timeoutMs: agent.timeoutMs,
+        maxBuffer: 8 * 1024 * 1024,
+      }
+    );
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 function countFiles(root, ext) {
@@ -263,14 +351,7 @@ for (const agent of agents) {
     console.log(`  history: ${historyLine}`);
   }
 
-  if (agent.chatSkipped) {
-    summary.chat = 'skipped';
-    console.log(`  chat: skipped - ${agent.chatSkipped}`);
-    console.log('');
-    continue;
-  }
-
-  if (!agent.chatArgs) {
+  if (!agent.chatArgs && !agent.chatProbe) {
     summary.chat = 'not-supported';
     console.log('  chat: not supported by this verifier');
     console.log('');
@@ -284,7 +365,9 @@ for (const agent of agents) {
     continue;
   }
 
-  const chat = run(agent.command, agent.chatArgs, { env: cloneEnv(agent), timeoutMs: agent.timeoutMs });
+  const chat = agent.chatProbe
+    ? agent.chatProbe(agent)
+    : run(agent.command, agent.chatArgs, { env: cloneEnv(agent), timeoutMs: agent.timeoutMs });
   const cleanedOutput = agent.clean ? agent.clean(chat.output) : chat.output;
   const chatState = classifyChat(agent, chat, cleanedOutput);
   summary.chat = chatState;
