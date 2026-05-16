@@ -145,6 +145,7 @@
   },
   "patchedDependencies": {
     "7zip-bin@5.2.0": "patches/7zip-bin@5.2.0.patch",
+    "electron-vite@5.0.0": "patches/electron-vite@5.0.0.patch",
   },
   "overrides": {
     "body-parser": "^2.2.1",

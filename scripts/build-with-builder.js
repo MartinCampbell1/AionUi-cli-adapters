@@ -405,6 +405,7 @@ try {
       env: {
         ...process.env,
         ELECTRON_BUILDER_ARCH: targetArch,
+        ELECTRON_VITE_CONFIG_LOADER: 'tsx',
       },
     });
 

@@ -18,8 +18,8 @@
     "webui:prod": "cross-env NODE_ENV=production electron-vite dev -- --webui",
     "webui:prod:remote": "cross-env NODE_ENV=production electron-vite dev -- --webui --remote",
     "resetpass": "electron-vite dev -- --resetpass",
-    "package": "electron-vite build",
-    "make": "electron-vite build",
+    "package": "cross-env ELECTRON_VITE_CONFIG_LOADER=tsx electron-vite build",
+    "make": "cross-env ELECTRON_VITE_CONFIG_LOADER=tsx electron-vite build",
     "dist": "node scripts/build-with-builder.js",
     "dist:mac": "node scripts/build-with-builder.js auto --mac",
     "dist:win": "node scripts/build-with-builder.js auto --win",
@@ -37,13 +37,13 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "i18n:types": "node scripts/generate-i18n-types.js",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:contract": "vitest run tests/contract --passWithNoTests",
-    "test:integration": "vitest run tests/integration",
-    "test:packaged:i18n": "vitest run tests/integration/i18n-packaged.test.ts",
-    "bench": "vitest bench",
+    "test": "vitest run --configLoader runner",
+    "test:watch": "vitest --configLoader runner",
+    "test:coverage": "vitest run --configLoader runner --coverage",
+    "test:contract": "vitest run --configLoader runner tests/contract --passWithNoTests",
+    "test:integration": "vitest run --configLoader runner tests/integration",
+    "test:packaged:i18n": "vitest run --configLoader runner tests/integration/i18n-packaged.test.ts",
+    "bench": "vitest bench --configLoader runner",
     "bench:db": "bun test ./tests/bench/database.bench.bun.ts",
     "bench:report": "bunx tsx scripts/run-benchmarks.ts",
     "bench:startup": "bunx tsx scripts/benchmark-startup.ts",
@@ -63,7 +63,7 @@
     "test:e2e:team:comm": "playwright test --config playwright.config.ts tests/e2e/specs/team-communication.e2e.ts --reporter=list",
     "prepare": "husky",
     "postinstall": "node scripts/postinstall.js",
-    "test:packaged:bun": "vitest run tests/integration/bundled-bun-packaged.test.ts",
+    "test:packaged:bun": "vitest run --configLoader runner tests/integration/bundled-bun-packaged.test.ts",
     "test:bun": "bun test src/process/services/database/drivers/*.bun.test.ts",
     "server:start": "NODE_ENV=development bun dist-server/server.mjs",
     "server:start:remote": "NODE_ENV=development ALLOW_REMOTE=true bun dist-server/server.mjs",
@@ -248,7 +248,8 @@
     "electronVersion": "^37.3.1"
   },
   "patchedDependencies": {
-    "7zip-bin@5.2.0": "patches/7zip-bin@5.2.0.patch"
+    "7zip-bin@5.2.0": "patches/7zip-bin@5.2.0.patch",
+    "electron-vite@5.0.0": "patches/electron-vite@5.0.0.patch"
   },
   "productName": "AionUi"
 }

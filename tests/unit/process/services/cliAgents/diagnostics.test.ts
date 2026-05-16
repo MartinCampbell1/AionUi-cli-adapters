@@ -114,6 +114,26 @@ describe('cli agent diagnostics', () => {
     expect(status.remediation?.verifyCommands).toEqual(['opencode auth list']);
   });
 
+  it('uses the OpenCode cold-start timeout for version and auth probes', async () => {
+    const runner = vi.fn<CliCommandRunner>(async (_command, args) => {
+      if (args[0] === '--version') {
+        return { exitCode: 0, stdout: '1.14.20\n', stderr: '', timedOut: false };
+      }
+      return { exitCode: 0, stdout: 'OpenAI api\n', stderr: '', timedOut: false };
+    });
+
+    const status = await probeCliAgentStatus(
+      'opencode',
+      { backend: 'opencode', name: 'OpenCode', cliPath: '/Users/test/.opencode/bin/opencode' },
+      runner,
+      makeHistory('opencode')
+    );
+
+    expect(status.runtimeState).toBe('ready');
+    expect(runner).toHaveBeenNthCalledWith(1, '/Users/test/.opencode/bin/opencode', ['--version'], 15_000);
+    expect(runner).toHaveBeenNthCalledWith(2, '/Users/test/.opencode/bin/opencode', ['auth', 'list'], 15_000);
+  });
+
   it('does not show remediation when Codex is ready', async () => {
     const runner = vi.fn<CliCommandRunner>(async (_command, args) => {
       if (args[0] === '--version') {

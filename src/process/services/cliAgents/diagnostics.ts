@@ -114,8 +114,9 @@ export async function probeCliAgentStatus(
   const command = detectedAgent?.cliPath || descriptor.command;
   const warnings: string[] = [];
   const history = historySummary ?? (await getHistorySummary(backend));
+  const probeTimeoutMs = descriptor.probeTimeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  const versionResult = await runner(command, descriptor.versionArgs, DEFAULT_TIMEOUT_MS);
+  const versionResult = await runner(command, descriptor.versionArgs, probeTimeoutMs);
   const versionOutput = compactOutput(versionResult);
   const version = firstLine(versionOutput);
 
@@ -176,7 +177,7 @@ export async function probeCliAgentStatus(
     };
   }
 
-  const authResult = await runner(command, descriptor.authProbe.args, DEFAULT_TIMEOUT_MS);
+  const authResult = await runner(command, descriptor.authProbe.args, probeTimeoutMs);
   const authOutput = compactOutput(authResult);
   const authState = parseAuthState(backend, authOutput);
 

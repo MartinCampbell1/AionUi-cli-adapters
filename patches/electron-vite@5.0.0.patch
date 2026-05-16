@@ -1,0 +1,51 @@
+diff --git a/dist/chunks/lib-q6ns0vZr.js b/dist/chunks/lib-q6ns0vZr.js
+index 413d67f..bdb0bb9 100644
+--- a/dist/chunks/lib-q6ns0vZr.js
++++ b/dist/chunks/lib-q6ns0vZr.js
+@@ -1671,8 +1671,18 @@ async function loadConfigFromFile(configEnv, configFile, configRoot = process.cw
+     }
+     const isESM = isFilePathESM(resolvedPath);
+     try {
+-        const { code, dependencies } = await bundleConfigFile(resolvedPath, isESM);
+-        const configExport = await loadConfigFormBundledFile(configRoot, resolvedPath, code, isESM);
++        let dependencies;
++        let configExport;
++        if (process.env.ELECTRON_VITE_CONFIG_LOADER === 'tsx') {
++            const loadResult = await loadConfigFromTsx(resolvedPath);
++            dependencies = loadResult.dependencies;
++            configExport = loadResult.configExport;
++        }
++        else {
++            const bundled = await bundleConfigFile(resolvedPath, isESM);
++            dependencies = bundled.dependencies;
++            configExport = await loadConfigFormBundledFile(configRoot, resolvedPath, bundled.code, isESM);
++        }
+         const config = await (typeof configExport === 'function' ? configExport(configEnv) : configExport);
+         if (!isObject(config)) {
+             throw new Error(`config must export or return an object`);
+@@ -1760,6 +1770,25 @@ async function bundleConfigFile(fileName, isESM) {
+         dependencies: result.metafile ? Object.keys(result.metafile.inputs) : []
+     };
+ }
++async function loadConfigFromTsx(fileName) {
++    const { tsImport } = await import('tsx/esm/api');
++    const imported = await tsImport(pathToFileURL(fileName).href, import.meta.url);
++    const configExport = unwrapDefaultExport(imported);
++    return {
++        configExport,
++        dependencies: [fileName]
++    };
++}
++function unwrapDefaultExport(imported) {
++    let value = imported && typeof imported === 'object' && 'default' in imported ? imported.default : imported;
++    if (value && typeof value === 'object' && 'default' in value) {
++        const keys = Object.keys(value);
++        if (keys.every(key => key === 'default' || key === '__esModule')) {
++            value = value.default;
++        }
++    }
++    return value;
++}
+ const _require = createRequire(import.meta.url);
+ async function loadConfigFormBundledFile(configRoot, configFile, bundledCode, isESM) {
+     if (isESM) {

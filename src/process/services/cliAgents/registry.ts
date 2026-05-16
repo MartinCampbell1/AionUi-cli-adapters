@@ -19,6 +19,7 @@ export interface CliAgentDescriptor {
   name: string;
   command: string;
   versionArgs: string[];
+  probeTimeoutMs?: number;
   authProbe?: {
     args: string[];
     authenticatedPatterns: string[];
@@ -114,6 +115,7 @@ export const CLI_AGENT_DESCRIPTORS: Record<CliAgentBackend, CliAgentDescriptor> 
     name: 'OpenCode',
     command: ACP_BACKENDS_ALL.opencode.cliCommand || 'opencode',
     versionArgs: ['--version'],
+    probeTimeoutMs: 15_000,
     authProbe: {
       args: ['auth', 'list'],
       authenticatedPatterns: ['openai', 'anthropic', 'google', 'enabled', 'credential'],
@@ -134,6 +136,7 @@ export const CLI_AGENT_DESCRIPTORS: Record<CliAgentBackend, CliAgentDescriptor> 
     name: 'Factory Droid',
     command: ACP_BACKENDS_ALL.droid.cliCommand || 'droid',
     versionArgs: ['--version'],
+    probeTimeoutMs: 15_000,
     historyLabel: 'Factory Droid history',
     remediation: {
       title: 'Complete Factory Droid CLI login',

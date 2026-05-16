@@ -1,14 +1,17 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 const aliases = {
-  '@/': path.resolve(__dirname, './src') + '/',
-  '@process/': path.resolve(__dirname, './src/process') + '/',
-  '@renderer/': path.resolve(__dirname, './src/renderer') + '/',
-  '@worker/': path.resolve(__dirname, './src/process/worker') + '/',
-  '@mcp/models/': path.resolve(__dirname, './src/common/models') + '/',
-  '@mcp/types/': path.resolve(__dirname, './src/common') + '/',
-  '@mcp/': path.resolve(__dirname, './src/common') + '/',
+  '@/': path.resolve(rootDir, './src') + '/',
+  '@process/': path.resolve(rootDir, './src/process') + '/',
+  '@renderer/': path.resolve(rootDir, './src/renderer') + '/',
+  '@worker/': path.resolve(rootDir, './src/process/worker') + '/',
+  '@mcp/models/': path.resolve(rootDir, './src/common/models') + '/',
+  '@mcp/types/': path.resolve(rootDir, './src/common') + '/',
+  '@mcp/': path.resolve(rootDir, './src/common') + '/',
 };
 
 export default defineConfig({
