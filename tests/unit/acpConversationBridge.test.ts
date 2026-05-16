@@ -2,6 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('electron', () => ({ app: { isPackaged: false, getPath: vi.fn(() => '/tmp') } }));
 
+const directTurnMock = vi.hoisted(() => ({
+  isDirectCliTurnBackend: vi.fn((backend: string | undefined) =>
+    Boolean(backend && ['claude', 'droid', 'hermes', 'gemini'].includes(backend))
+  ),
+  probeDirectCliTurnHealth: vi.fn(),
+}));
+
+const legacyConnectorMock = vi.hoisted(() => ({
+  LegacyConnectorFactory: vi.fn(function () {
+    return { create: vi.fn() };
+  }),
+}));
+
 const handlers: Record<string, (...args: any[]) => any> = {};
 function makeChannel(name: string) {
   return {
@@ -31,6 +44,9 @@ vi.mock('../../src/common', () => ({
     },
   },
 }));
+
+vi.mock('../../src/process/services/cliAgents/directTurn', () => directTurnMock);
+vi.mock('../../src/process/acp/compat/LegacyConnectorFactory', () => legacyConnectorMock);
 
 vi.mock('../../src/process/agent/AgentRegistry', () => ({
   agentRegistry: {
@@ -146,6 +162,37 @@ describe('acpConversationBridge', () => {
     expect(result.success).toBe(true);
     expect(result.data).toHaveLength(1);
     expect(result.data[0].supportedTransports).toEqual(['stdio']);
+  });
+
+  it('checkAgentHealth probes one-shot CLI agents without opening ACP sessions', async () => {
+    directTurnMock.probeDirectCliTurnHealth.mockResolvedValue({ available: true, latency: 42 });
+
+    const result = await handlers['checkAgentHealth']({ backend: 'droid' });
+
+    expect(result).toEqual({ success: true, data: { available: true, latency: 42 } });
+    expect(directTurnMock.probeDirectCliTurnHealth).toHaveBeenCalledWith({
+      backend: 'droid',
+      cwd: expect.any(String),
+    });
+    expect(legacyConnectorMock.LegacyConnectorFactory).not.toHaveBeenCalled();
+  });
+
+  it('checkAgentHealth maps direct CLI auth failures to the standard health response', async () => {
+    directTurnMock.probeDirectCliTurnHealth.mockResolvedValue({
+      available: false,
+      latency: 7,
+      error: 'Factory Droid CLI is installed, but its local authentication is not ready.',
+      authRequired: true,
+    });
+
+    const result = await handlers['checkAgentHealth']({ backend: 'droid' });
+
+    expect(result).toEqual({
+      success: false,
+      msg: 'droid not authenticated',
+      data: { available: false, error: 'Not authenticated' },
+    });
+    expect(legacyConnectorMock.LegacyConnectorFactory).not.toHaveBeenCalled();
   });
 
   it('getAvailableAgents returns error when registry throws', async () => {

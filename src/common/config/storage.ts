@@ -5,6 +5,7 @@
  */
 
 import type { AcpBackend, AcpBackendAll, AcpBackendConfig } from '@/common/types/acpTypes';
+import type { CliAgentImportedHistoryExtra } from '@/common/types/cliAgent';
 import type { SpeechToTextConfig } from '@/common/types/speech';
 import { storage } from '@office-ai/platform';
 
@@ -311,6 +312,8 @@ export type TChatConversation =
           isHealthCheck?: boolean;
           /** Cron job ID that spawned this conversation */
           cronJobId?: string;
+          /** Imported local CLI history provenance. */
+          cliHistory?: CliAgentImportedHistoryExtra;
         }
       >,
       'model'

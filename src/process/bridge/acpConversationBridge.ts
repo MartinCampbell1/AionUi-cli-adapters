@@ -14,6 +14,7 @@ import { mcpService } from '@/process/services/mcpServices/McpService';
 import { ipcBridge } from '@/common';
 import { LegacyConnectorFactory } from '@process/acp/compat/LegacyConnectorFactory';
 import { noopProtocolHandlers } from '@process/acp/types';
+import { isDirectCliTurnBackend, probeDirectCliTurnHealth } from '@process/services/cliAgents/directTurn';
 import * as os from 'os';
 
 export function initAcpConversationBridge(workerTaskManager: IWorkerTaskManager): void {
@@ -88,6 +89,32 @@ export function initAcpConversationBridge(workerTaskManager: IWorkerTaskManager)
   ipcBridge.acpConversation.checkAgentHealth.provider(async ({ backend }) => {
     const startTime = Date.now();
 
+    const tempDir = os.tmpdir();
+    const backendId = String(backend);
+
+    if (isDirectCliTurnBackend(backendId)) {
+      const directHealth = await probeDirectCliTurnHealth({ backend: backendId, cwd: tempDir });
+
+      if (!directHealth.available) {
+        const directError = directHealth.error || `${backend} CLI unavailable`;
+        return {
+          success: false,
+          msg: directHealth.authRequired
+            ? `${backend} not authenticated`
+            : `${backend} health check failed: ${directError}`,
+          data: {
+            available: false,
+            error: directHealth.authRequired ? 'Not authenticated' : directError,
+          },
+        };
+      }
+
+      return {
+        success: true,
+        data: { available: true, latency: directHealth.latency },
+      };
+    }
+
     // Step 1: Check if CLI is installed
     const agents = agentRegistry.getDetectedAgents();
     const agent = agents.find((a) => isAgentKind(a, 'acp') && a.backend === backend);
@@ -102,7 +129,6 @@ export function initAcpConversationBridge(workerTaskManager: IWorkerTaskManager)
       };
     }
 
-    const tempDir = os.tmpdir();
     const cliPath = acpAgent?.cliPath;
     const acpArgs = acpAgent?.acpArgs;
 

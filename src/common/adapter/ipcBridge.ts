@@ -9,6 +9,13 @@ import { bridge } from '@office-ai/platform';
 import type { OpenDialogOptions } from 'electron';
 import type { McpSource } from '../../process/services/mcpServices/McpProtocol';
 import type { AgentBackend, AcpModelInfo } from '../types/acpTypes';
+import type {
+  CliAgentHistoryListResult,
+  CliAgentHistorySummary,
+  CliAgentImportRequest,
+  CliAgentImportResult,
+  CliAgentRuntimeStatus,
+} from '../types/cliAgent';
 import type { SlashCommandItem } from '../chat/slash/types';
 import type { IMcpServer, IProvider, TChatConversation, TProviderWithModel, ICssTheme } from '../config/storage';
 import type { PreviewHistoryTarget, PreviewSnapshotInfo } from '../types/preview';
@@ -511,6 +518,20 @@ export const acpConversation = {
     IBridgeResponse<{ configOptions: import('../types/acpTypes').AcpSessionConfigOption[] }>,
     { conversationId: string; configId: string; value: string }
   >('acp.set-config-option'),
+};
+
+export const cliAgents = {
+  getStatus: bridge.buildProvider<IBridgeResponse<CliAgentRuntimeStatus>, { backend: string }>('cli-agents.get-status'),
+  getHistorySummary: bridge.buildProvider<IBridgeResponse<CliAgentHistorySummary>, { backend: string }>(
+    'cli-agents.get-history-summary'
+  ),
+  listHistorySessions: bridge.buildProvider<
+    IBridgeResponse<CliAgentHistoryListResult>,
+    { backend: string; limit?: number; sessionIds?: string[] }
+  >('cli-agents.list-history-sessions'),
+  importHistory: bridge.buildProvider<IBridgeResponse<CliAgentImportResult>, CliAgentImportRequest>(
+    'cli-agents.import-history'
+  ),
 };
 
 // MCP 服务相关接口

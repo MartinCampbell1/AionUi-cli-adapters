@@ -909,5 +909,27 @@
     "version": "Sürüm",
     "path": "Yol",
     "providerNote": "Sağlayıcı ve API anahtarı ayarları Modeller sayfasında yönetilir. Aion CLI destekler: Anthropic, OpenAI, AWS Bedrock."
+  },
+  "localAgent": {
+    "subtitle": "Uses your local CLI authentication and ACP runtime, not API base URLs.",
+    "runtime": "Runtime",
+    "installed": "Installed",
+    "yes": "Yes",
+    "no": "No",
+    "auth": "Auth",
+    "acpArgs": "ACP args",
+    "history": "History",
+    "historySource": "Source",
+    "historyPath": "Path",
+    "historySessions": "Sessions",
+    "recentSessions": "Recent sessions",
+    "noSessions": "No importable sessions found",
+    "importRecent": "Import recent history",
+    "importFailed": "Failed to import CLI history",
+    "importResult": "Imported {{imported}} session(s), skipped {{skipped}}.",
+    "startChat": "Start chat",
+    "unsupportedBackend": "Unsupported local agent",
+    "repairCommands": "Repair commands",
+    "verifyCommands": "Verify commands"
   }
 }

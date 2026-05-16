@@ -14,6 +14,7 @@ import { initApplicationBridge } from './applicationBridge';
 import { initAuthBridge } from './authBridge';
 import { initBedrockBridge } from './bedrockBridge';
 import { initChannelBridge } from './channelBridge';
+import { initCliAgentBridge } from './cliAgentBridge';
 import { initConversationBridge } from './conversationBridge';
 import { initCronBridge } from './cronBridge';
 import { initDatabaseBridge } from './databaseBridge';
@@ -69,6 +70,7 @@ export function initAllBridges(deps: BridgeDependencies): void {
   initGeminiBridge();
   initBedrockBridge();
   initAcpConversationBridge(deps.workerTaskManager);
+  initCliAgentBridge(deps.conversationRepo);
   initAuthBridge();
   initModelBridge();
   initMcpBridge();
@@ -115,6 +117,7 @@ export {
   initAuthBridge,
   initBedrockBridge,
   initChannelBridge,
+  initCliAgentBridge,
   initConversationBridge,
   initCronBridge,
   initDatabaseBridge,

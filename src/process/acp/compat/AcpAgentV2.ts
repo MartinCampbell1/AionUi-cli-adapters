@@ -9,6 +9,7 @@ import { LegacyConnectorFactory } from '@process/acp/compat/LegacyConnectorFacto
 import {
   loadAuthCredentials,
   mapAcpErrorCodeToType,
+  normalizeAcpModeForBackend,
   toAcpConfigOptions,
   toAcpModelInfo,
   toAgentConfig,
@@ -753,13 +754,14 @@ export class AcpAgentV2 {
   }
 
   async setMode(mode: string): Promise<{ success: boolean; error?: string }> {
+    const normalizedMode = normalizeAcpModeForBackend(this.agentConfig.agentBackend, mode);
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.modeOp = null;
         resolve({ success: true }); // Optimistic timeout
       }, 10_000);
       this.modeOp = { resolve, reject, timer };
-      this.session!.setMode(mode);
+      this.session!.setMode(normalizedMode);
     });
   }
 

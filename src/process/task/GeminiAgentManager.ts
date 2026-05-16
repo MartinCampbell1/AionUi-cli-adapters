@@ -32,6 +32,7 @@ import { hasCronCommands } from './CronCommandDetector';
 import { extractTextFromMessage, processCronInMessage } from './MessageMiddleware';
 import { stripThinkTags, extractAndStripThinkTags } from './ThinkTagDetector';
 import { teamEventBus } from '@process/team/teamEventBus';
+import { runDirectCliTurn } from '@process/services/cliAgents/directTurn';
 import * as fs from 'node:fs';
 
 // gemini agent管理器类
@@ -484,6 +485,25 @@ export class GeminiAgentManager extends BaseAgentManager<
         ...(data.hidden && { hidden: true }),
       };
       ipcBridge.geminiConversation.responseStream.emit(userResponseMessage);
+    }
+
+    if (!data.cronMeta) {
+      this.status = 'running';
+      cronBusyGuard.setProcessing(this.conversation_id, true);
+      try {
+        await runDirectCliTurn({
+          backend: 'gemini',
+          conversationId: this.conversation_id,
+          input: data.input,
+          msgId: data.msg_id,
+          cwd: this.workspace,
+          files: data.files,
+        });
+      } finally {
+        cronBusyGuard.setProcessing(this.conversation_id, false);
+        this.status = 'finished';
+      }
+      return;
     }
 
     // Check if MCP config has changed since worker was initialized

@@ -3,6 +3,11 @@
 import type { IResponseMessage } from '@/common/adapter/ipcBridge';
 import type { TMessage } from '@/common/chat/chatLib';
 import {
+  CODEX_MODE_AUTO_EDIT,
+  CODEX_MODE_FULL_AUTO,
+  CODEX_MODE_FULL_AUTO_NO_SANDBOX,
+} from '@/common/types/codex/codexModes';
+import {
   ACP_BACKENDS_ALL,
   AcpErrorType,
   type AcpModelInfo,
@@ -12,6 +17,7 @@ import {
 import type { McpServer } from '@agentclientprotocol/sdk';
 import type { AgentConfig, AgentSource, ConfigOption, InitialDesiredConfig, ModelSnapshot } from '@process/acp/types';
 import { getEnhancedEnv, loadFullShellEnvironment } from '@process/utils/shellEnv';
+import { DEFAULT_OPENCODE_MODEL_ID } from '@/common/types/opencode/opencodeModels';
 /**
  * Old ACP agent config type from AcpAgent/AcpAgentManager
  * Exported for use by AcpAgentV2 compatibility layer
@@ -51,6 +57,37 @@ export type OldAcpAgentConfig = {
   onAvailableCommandsUpdate?: (commands: Array<{ name: string; description?: string; hint?: string }>) => void;
 };
 
+export function normalizeAcpModeForBackend(backend: string, mode: string): string {
+  if (backend === 'opencode') {
+    switch (mode) {
+      case 'default':
+      case 'read-only':
+      case 'auto':
+      case 'full-access':
+      case CODEX_MODE_AUTO_EDIT:
+      case CODEX_MODE_FULL_AUTO:
+      case CODEX_MODE_FULL_AUTO_NO_SANDBOX:
+        return 'build';
+      default:
+        return mode;
+    }
+  }
+
+  if (backend !== 'codex') return mode;
+
+  switch (mode) {
+    case 'default':
+      return 'read-only';
+    case CODEX_MODE_AUTO_EDIT:
+      return 'auto';
+    case CODEX_MODE_FULL_AUTO:
+    case CODEX_MODE_FULL_AUTO_NO_SANDBOX:
+      return 'full-access';
+    default:
+      return mode;
+  }
+}
+
 /**
  * Convert old-style ACP agent config to new-style AgentConfig
  */
@@ -81,8 +118,12 @@ export function toAgentConfig(old: OldAcpAgentConfig): AgentConfig {
 
   // Build initialDesired from Guid page selections
   const initialDesired: InitialDesiredConfig = {};
-  if (old.extra?.currentModelId) initialDesired.model = old.extra.currentModelId;
-  if (old.extra?.sessionMode) initialDesired.mode = old.extra.sessionMode;
+  if (old.extra?.currentModelId) {
+    initialDesired.model = old.extra.currentModelId;
+  } else if (backend === 'opencode') {
+    initialDesired.model = DEFAULT_OPENCODE_MODEL_ID;
+  }
+  if (old.extra?.sessionMode) initialDesired.mode = normalizeAcpModeForBackend(backend, old.extra.sessionMode);
   if (old.extra?.pendingConfigOptions && Object.keys(old.extra.pendingConfigOptions).length > 0) {
     initialDesired.configOptions = old.extra.pendingConfigOptions;
   }

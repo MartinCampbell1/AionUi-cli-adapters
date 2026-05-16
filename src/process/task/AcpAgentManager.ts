@@ -44,6 +44,11 @@ import { prepareFirstMessageWithSkillsIndex } from '@process/task/agentUtils';
 import { shouldInjectTeamGuideMcp } from '@process/team/prompts/teamGuideCapability.ts';
 import { extractTextFromMessage, processCronInMessage } from './MessageMiddleware';
 import { ConversationTurnCompletionService } from './ConversationTurnCompletionService';
+import {
+  isDirectCliTurnBackend,
+  runDirectCliTurn,
+  type DirectCliBackend,
+} from '@process/services/cliAgents/directTurn';
 
 interface AcpAgentManagerData {
   workspace?: string;
@@ -115,6 +120,7 @@ class AcpAgentManager extends BaseAgentManager<AcpAgentManagerData, AcpPermissio
   private missingFinishFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   private missingFinishFallbackTurnId: number | null = null;
   private readonly missingFinishFallbackDelayMs = 15000;
+  private directCliAbortController: AbortController | null = null;
   /** True while `agent.sendMessage()` is awaiting (prompt in flight).
    *  The idle-finish fallback timer is suppressed during this window because
    *  long tool-call gaps (>15 s) between stream events are normal and do not
@@ -131,6 +137,24 @@ class AcpAgentManager extends BaseAgentManager<AcpAgentManagerData, AcpPermissio
     this.status = 'pending';
     // Sync yoloMode from sessionMode so addConfirmation auto-approves when Full Auto is selected
     this.yoloMode = this.yoloMode || this.isYoloMode(this.currentMode);
+  }
+
+  usesDirectCliTurn(): boolean {
+    return isDirectCliTurnBackend(this.options.backend);
+  }
+
+  private async disposeBootstrappedAgentForDirectCli(): Promise<void> {
+    this.bootstrap = undefined;
+    this.bootstrapping = false;
+    if (!this.agent) {
+      return;
+    }
+
+    try {
+      await this.agent.kill();
+    } catch (error) {
+      mainWarn('[AcpAgentManager]', `Failed to stop prewarmed ${this.options.backend} ACP session`, error);
+    }
   }
 
   private makeStreamBufferKey(message: Extract<TMessage, { type: 'text' }>): string {
@@ -1005,6 +1029,40 @@ ${collectedResponses.join('\n')}`;
         ipcBridge.acpConversation.responseStream.emit(userResponseMessage);
       }
 
+      const directBackend = this.usesDirectCliTurn() ? (this.options.backend as DirectCliBackend) : null;
+      if (directBackend && data.msg_id && data.content && !data.silent && !data.cronMeta) {
+        await this.disposeBootstrappedAgentForDirectCli();
+        this.directCliAbortController?.abort();
+        const directController = new AbortController();
+        this.directCliAbortController = directController;
+        try {
+          await runDirectCliTurn({
+            backend: directBackend,
+            conversationId: this.conversation_id,
+            input: data.content,
+            msgId: data.msg_id,
+            cwd: this.workspace,
+            files: data.files,
+            signal: directController.signal,
+          });
+          if (this.directCliAbortController === directController) {
+            this.directCliAbortController = null;
+          }
+          this.clearBusyState();
+          this.status = 'finished';
+          return { success: true };
+        } catch (error) {
+          if (this.directCliAbortController === directController) {
+            this.directCliAbortController = null;
+          }
+          this.clearBusyState();
+          return {
+            success: false,
+            msg: error instanceof Error ? error.message : String(error),
+          };
+        }
+      }
+
       await this.initAgent(this.options);
 
       if (data.msg_id && data.content) {
@@ -1267,6 +1325,10 @@ ${collectedResponses.join('\n')}`;
    * Uses ACP session/cancel so the connection stays alive for subsequent messages.
    */
   async stop() {
+    if (this.directCliAbortController) {
+      this.directCliAbortController.abort();
+      this.directCliAbortController = null;
+    }
     if (this.agent) {
       this.agent.cancelPrompt();
     }

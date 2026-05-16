@@ -1013,6 +1013,7 @@ export type AcpModelInfoSourceDetail =
   | 'acp-config-option'
   | 'acp-models'
   | 'persisted-model'
+  | 'built-in'
   | 'codex-stream';
 
 export interface AcpModelInfo {

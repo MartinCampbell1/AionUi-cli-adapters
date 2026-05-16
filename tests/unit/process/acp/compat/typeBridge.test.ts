@@ -2,6 +2,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
+  normalizeAcpModeForBackend,
   toAgentConfig,
   toAcpModelInfo,
   toAcpConfigOptions,
@@ -12,8 +13,25 @@ import type { AgentConfig, ModelSnapshot, ConfigOption } from '@process/acp/type
 import type { AcpModelInfo, AcpSessionConfigOption } from '@/common/types/acpTypes';
 import type { IResponseMessage } from '@/common/adapter/ipcBridge';
 import type { TMessage } from '@/common/chat/chatLib';
+import { DEFAULT_OPENCODE_MODEL_ID } from '@/common/types/opencode/opencodeModels';
 
 describe('typeBridge', () => {
+  describe('normalizeAcpModeForBackend', () => {
+    it('maps Codex legacy permission modes to Codex ACP modes', () => {
+      expect(normalizeAcpModeForBackend('codex', 'default')).toBe('read-only');
+      expect(normalizeAcpModeForBackend('codex', 'autoEdit')).toBe('auto');
+      expect(normalizeAcpModeForBackend('codex', 'yolo')).toBe('full-access');
+      expect(normalizeAcpModeForBackend('codex', 'custom')).toBe('custom');
+    });
+
+    it('maps AionUi legacy permission modes to OpenCode build mode', () => {
+      expect(normalizeAcpModeForBackend('opencode', 'default')).toBe('build');
+      expect(normalizeAcpModeForBackend('opencode', 'read-only')).toBe('build');
+      expect(normalizeAcpModeForBackend('opencode', 'autoEdit')).toBe('build');
+      expect(normalizeAcpModeForBackend('opencode', 'plan')).toBe('plan');
+    });
+  });
+
   describe('toAgentConfig', () => {
     it('should convert basic old config to new config', () => {
       const oldConfig: OldAcpAgentConfig = {
@@ -173,6 +191,19 @@ describe('typeBridge', () => {
       };
       const result = toAgentConfig(oldConfig);
       expect(result.authCredentials).toBeUndefined();
+    });
+
+    it('should seed OpenCode with a safe default model when no model is selected', () => {
+      const oldConfig: OldAcpAgentConfig = {
+        id: 'opencode-agent',
+        backend: 'opencode',
+        workingDir: '/workspace',
+        onStreamEvent: () => {},
+      };
+
+      const result = toAgentConfig(oldConfig);
+
+      expect(result.initialDesired?.model).toBe(DEFAULT_OPENCODE_MODEL_ID);
     });
   });
 

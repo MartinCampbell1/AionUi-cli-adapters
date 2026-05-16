@@ -6,6 +6,7 @@
 
 import { ipcBridge } from '@/common';
 import { DEFAULT_CODEX_MODELS } from '@/common/types/codex/codexModels';
+import { DEFAULT_OPENCODE_MODEL_ID, DEFAULT_OPENCODE_MODELS } from '@/common/types/opencode/opencodeModels';
 import type { IProvider } from '@/common/config/storage';
 import { ConfigStorage } from '@/common/config/storage';
 import type { AcpBackendAll, AcpSessionConfigOption } from '@/common/types/acpTypes';
@@ -67,6 +68,45 @@ type UseGuidAgentSelectionOptions = {
   /** React Router location.key — changes on every navigation, used to detect new resets. */
   locationKey?: string;
 };
+
+function dedupeModelList(models: Array<{ id: string; label: string }>): Array<{ id: string; label: string }> {
+  const seen = new Set<string>();
+  return models.filter((model) => {
+    if (seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  });
+}
+
+function getDefaultAcpModelInfo(backend: string, cachedInfo?: AcpModelInfo): AcpModelInfo | null {
+  if (backend === 'codex' && DEFAULT_CODEX_MODELS.length > 0) {
+    return {
+      source: 'models',
+      sourceDetail: 'built-in',
+      currentModelId: DEFAULT_CODEX_MODELS[0].id,
+      currentModelLabel: DEFAULT_CODEX_MODELS[0].label,
+      availableModels: DEFAULT_CODEX_MODELS.map((m) => ({ id: m.id, label: m.label })),
+      canSwitch: true,
+    };
+  }
+
+  if (backend === 'opencode' && DEFAULT_OPENCODE_MODELS.length > 0) {
+    const currentModel = DEFAULT_OPENCODE_MODELS.find((m) => m.id === DEFAULT_OPENCODE_MODEL_ID);
+    return {
+      source: 'models',
+      sourceDetail: 'built-in',
+      currentModelId: DEFAULT_OPENCODE_MODEL_ID,
+      currentModelLabel: currentModel?.label ?? DEFAULT_OPENCODE_MODEL_ID,
+      availableModels: dedupeModelList([
+        ...DEFAULT_OPENCODE_MODELS.map((m) => ({ id: m.id, label: m.label })),
+        ...(cachedInfo?.availableModels ?? []),
+      ]),
+      canSwitch: true,
+    };
+  }
+
+  return null;
+}
 
 /**
  * Hook that manages agent selection, availability, and preset assistant logic.
@@ -369,13 +409,17 @@ export const useGuidAgentSelection = ({
           _setSelectedAcpModel(preferred);
         } else {
           const cachedInfo = acpCachedModels[backend];
-          _setSelectedAcpModel(cachedInfo?.currentModelId ?? null);
+          const defaultInfo = getDefaultAcpModelInfo(backend, cachedInfo);
+          const modelInfo = backend === 'opencode' ? defaultInfo : (cachedInfo ?? defaultInfo);
+          _setSelectedAcpModel(modelInfo?.currentModelId ?? null);
         }
       })
       .catch(() => {
         if (cancelled) return;
         const cachedInfo = acpCachedModels[backend];
-        _setSelectedAcpModel(cachedInfo?.currentModelId ?? null);
+        const defaultInfo = getDefaultAcpModelInfo(backend, cachedInfo);
+        const modelInfo = backend === 'opencode' ? defaultInfo : (cachedInfo ?? defaultInfo);
+        _setSelectedAcpModel(modelInfo?.currentModelId ?? null);
       });
 
     return () => {
@@ -454,19 +498,14 @@ export const useGuidAgentSelection = ({
         ? 'custom'
         : selectedAgentKey;
     const cached = acpCachedModels[backend];
+    if (backend === 'opencode') {
+      const defaultInfo = getDefaultAcpModelInfo(backend, cached);
+      if (defaultInfo) return defaultInfo;
+    }
     if (cached) return cached;
 
-    // Fallback: when no cached models exist for codex (e.g., first launch or stale cache),
-    // use the hardcoded default list so the Guid page shows a model selector immediately.
-    if (backend === 'codex' && DEFAULT_CODEX_MODELS.length > 0) {
-      return {
-        source: 'models' as const,
-        currentModelId: DEFAULT_CODEX_MODELS[0].id,
-        currentModelLabel: DEFAULT_CODEX_MODELS[0].label,
-        availableModels: DEFAULT_CODEX_MODELS.map((m) => ({ id: m.id, label: m.label })),
-        canSwitch: true,
-      } satisfies AcpModelInfo;
-    }
+    const defaultModelInfo = getDefaultAcpModelInfo(backend, cached);
+    if (defaultModelInfo) return defaultModelInfo;
 
     return null;
   }, [selectedAgentKey, acpCachedModels, isPresetAgent, currentEffectiveAgentInfo.agentType]);

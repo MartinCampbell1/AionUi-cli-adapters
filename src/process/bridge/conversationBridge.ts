@@ -352,7 +352,10 @@ export function initConversationBridge(
       }
       const task = await workerTaskManager.getOrBuildTask(conversation_id);
       if (task && task.type === 'acp') {
-        await (task as unknown as AcpAgentManager).initAgent();
+        const acpTask = task as unknown as AcpAgentManager;
+        if (!acpTask.usesDirectCliTurn()) {
+          await acpTask.initAgent();
+        }
       }
     } catch {
       // Ignore errors — warmup is best-effort

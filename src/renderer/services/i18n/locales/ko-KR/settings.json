@@ -911,5 +911,27 @@
     "version": "버전",
     "path": "경로",
     "providerNote": "제공자 및 API 키 설정은 모델 페이지에서 관리합니다. Aion CLI는 Anthropic, OpenAI, AWS Bedrock을 지원합니다."
+  },
+  "localAgent": {
+    "subtitle": "Uses your local CLI authentication and ACP runtime, not API base URLs.",
+    "runtime": "Runtime",
+    "installed": "Installed",
+    "yes": "Yes",
+    "no": "No",
+    "auth": "Auth",
+    "acpArgs": "ACP args",
+    "history": "History",
+    "historySource": "Source",
+    "historyPath": "Path",
+    "historySessions": "Sessions",
+    "recentSessions": "Recent sessions",
+    "noSessions": "No importable sessions found",
+    "importRecent": "Import recent history",
+    "importFailed": "Failed to import CLI history",
+    "importResult": "Imported {{imported}} session(s), skipped {{skipped}}.",
+    "startChat": "Start chat",
+    "unsupportedBackend": "Unsupported local agent",
+    "repairCommands": "Repair commands",
+    "verifyCommands": "Verify commands"
   }
 }

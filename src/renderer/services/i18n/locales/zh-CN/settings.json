@@ -910,5 +910,27 @@
     "version": "版本",
     "path": "路径",
     "providerNote": "服务商和 API 密钥设置在模型页面管理。Aion CLI 支持：Anthropic、OpenAI、AWS Bedrock。"
+  },
+  "localAgent": {
+    "subtitle": "Uses your local CLI authentication and ACP runtime, not API base URLs.",
+    "runtime": "Runtime",
+    "installed": "Installed",
+    "yes": "Yes",
+    "no": "No",
+    "auth": "Auth",
+    "acpArgs": "ACP args",
+    "history": "History",
+    "historySource": "Source",
+    "historyPath": "Path",
+    "historySessions": "Sessions",
+    "recentSessions": "Recent sessions",
+    "noSessions": "No importable sessions found",
+    "importRecent": "Import recent history",
+    "importFailed": "Failed to import CLI history",
+    "importResult": "Imported {{imported}} session(s), skipped {{skipped}}.",
+    "startChat": "Start chat",
+    "unsupportedBackend": "Unsupported local agent",
+    "repairCommands": "Repair commands",
+    "verifyCommands": "Verify commands"
   }
 }

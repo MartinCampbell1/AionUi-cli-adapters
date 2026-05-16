@@ -9,6 +9,7 @@ import type { IResponseMessage } from '@/common/adapter/ipcBridge';
 import { ConfigStorage } from '@/common/config/storage';
 import type { IProvider } from '@/common/config/storage';
 import type { AcpModelInfo } from '@/common/types/acpTypes';
+import { DEFAULT_OPENCODE_MODEL_ID, DEFAULT_OPENCODE_MODELS } from '@/common/types/opencode/opencodeModels';
 import { getModelDisplayLabel } from '@/renderer/utils/model/agentLogo';
 import { formatAcpModelDisplayLabel, getAcpModelSourceLabel } from '@/renderer/utils/model/modelSource';
 import { Button, Dropdown, Menu, Tooltip } from '@arco-design/web-react';
@@ -35,6 +36,37 @@ function isSameModelInfo(a: AcpModelInfo | null | undefined, b: AcpModelInfo | n
     const other = b.availableModels[index];
     return other && other.id === model.id && other.label === model.label;
   });
+}
+
+function dedupeModelList(models: Array<{ id: string; label: string }>): Array<{ id: string; label: string }> {
+  const seen = new Set<string>();
+  return models.filter((model) => {
+    if (seen.has(model.id)) return false;
+    seen.add(model.id);
+    return true;
+  });
+}
+
+function getFallbackModelInfo(
+  backendKey: string,
+  initialModelId?: string,
+  cachedInfo?: AcpModelInfo
+): AcpModelInfo | null {
+  if (backendKey !== 'opencode' || DEFAULT_OPENCODE_MODELS.length === 0) return null;
+  const currentModelId = initialModelId || DEFAULT_OPENCODE_MODEL_ID;
+  const currentModel = DEFAULT_OPENCODE_MODELS.find((m) => m.id === currentModelId);
+
+  return {
+    source: 'models',
+    sourceDetail: 'built-in',
+    currentModelId,
+    currentModelLabel: currentModel?.label ?? currentModelId,
+    canSwitch: true,
+    availableModels: dedupeModelList([
+      ...DEFAULT_OPENCODE_MODELS.map((m) => ({ id: m.id, label: m.label })),
+      ...(cachedInfo?.availableModels ?? []),
+    ]),
+  };
 }
 
 /**
@@ -72,7 +104,16 @@ const AcpModelSelector: React.FC<{
       try {
         const cached = await ConfigStorage.get('acp.cachedModels');
         const cachedInfo = cached?.[backendKey];
-        if (!cachedInfo?.availableModels?.length) return;
+        if (backendKey === 'opencode') {
+          const fallback = getFallbackModelInfo(backendKey, initialModelId, cachedInfo);
+          if (fallback) updateModelInfo(fallback);
+          return;
+        }
+        if (!cachedInfo?.availableModels?.length) {
+          const fallback = getFallbackModelInfo(backendKey, initialModelId);
+          if (fallback) updateModelInfo(fallback);
+          return;
+        }
 
         if (backendKey === 'codex') {
           console.log('[AcpModelSelector][codex] Loaded cached model info:', cachedInfo);

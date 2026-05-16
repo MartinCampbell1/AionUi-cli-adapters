@@ -24,13 +24,22 @@ const LocalAgents: React.FC = () => {
   const [hubModalVisible, setHubModalVisible] = useState(false);
 
   // Detected agents (include built-in backends and extension-contributed agents, exclude user custom and remote)
-  const { data: detectedAgents } = useSWR('acp.agents.available.settings', async () => {
-    const result = await ipcBridge.acpConversation.getAvailableAgents.invoke();
-    if (result.success && result.data) {
-      return result.data.filter((agent) => agent.backend !== 'remote' && agent.backend !== 'custom' && !agent.isPreset);
+  const { data: detectedAgents } = useSWR(
+    'acp.agents.available.settings',
+    async () => {
+      const result = await ipcBridge.acpConversation.getAvailableAgents.invoke();
+      if (result.success && result.data) {
+        return result.data.filter(
+          (agent) => agent.backend !== 'remote' && agent.backend !== 'custom' && !agent.isPreset
+        );
+      }
+      return [];
+    },
+    {
+      refreshInterval: (agents) => (agents && agents.length > 0 ? 0 : 1000),
+      revalidateOnFocus: true,
     }
-    return [];
-  });
+  );
 
   // Custom agents (user-defined, stored in 'acp.customAgents')
   const { data: customAgents, mutate: mutateCustomAgents } = useSWR('acp.customAgents.settings', async () => {
@@ -157,7 +166,14 @@ const LocalAgents: React.FC = () => {
           />
         )}
         {otherDetected.map((agent) => (
-          <AgentCard key={agent.backend} type='detected' agent={agent} variant='grid' />
+          <AgentCard
+            key={agent.backend}
+            type='detected'
+            agent={agent}
+            settingsDisabled={false}
+            onSettings={() => navigate(`/settings/local-agent/${encodeURIComponent(agent.backend)}`)}
+            variant='grid'
+          />
         ))}
       </div>
       {(!detectedAgents || detectedAgents.length === 0) && (
