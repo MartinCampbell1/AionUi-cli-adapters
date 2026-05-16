@@ -185,6 +185,25 @@ export async function probeCliAgentStatus(
   }
 
   if (authState === 'authenticated') {
+    if (descriptor.authProbe.provesChatReadiness === false) {
+      const runtimeState = 'unknown';
+      warnings.push(`${descriptor.name} auth status does not prove non-interactive chat readiness; use Check chat.`);
+      return {
+        backend,
+        name: descriptor.name,
+        installed: true,
+        cliPath: detectedAgent?.cliPath || command,
+        acpArgs: detectedAgent?.acpArgs,
+        version,
+        authState: 'unknown',
+        runtimeState,
+        message: 'Run Check chat to verify the non-interactive CLI path',
+        warnings: [...warnings, ...history.warnings],
+        remediation: getRemediation(backend, runtimeState),
+        history,
+      };
+    }
+
     return {
       backend,
       name: descriptor.name,

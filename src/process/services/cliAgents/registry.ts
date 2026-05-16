@@ -23,6 +23,7 @@ export interface CliAgentDescriptor {
     args: string[];
     authenticatedPatterns: string[];
     unauthenticatedPatterns: string[];
+    provesChatReadiness?: boolean;
   };
   historyLabel: string;
   defaultHistoryPath?: string;
@@ -47,6 +48,7 @@ export const CLI_AGENT_DESCRIPTORS: Record<CliAgentBackend, CliAgentDescriptor> 
         '"loggedin":false',
         '"loggedIn":false',
       ],
+      provesChatReadiness: false,
     },
     historyLabel: 'Claude Code JSONL',
     defaultHistoryPath: '~/.claude/projects',

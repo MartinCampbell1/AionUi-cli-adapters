@@ -41,7 +41,7 @@ describe('cli agent diagnostics', () => {
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
-  it('marks Claude authenticated from pretty auth status JSON', async () => {
+  it('does not mark Claude ready from auth status JSON alone', async () => {
     const runner = vi.fn<CliCommandRunner>(async (_command, args) => {
       if (args[0] === '--version') {
         return { exitCode: 0, stdout: '2.1.126 (Claude Code)\n', stderr: '', timedOut: false };
@@ -61,8 +61,13 @@ describe('cli agent diagnostics', () => {
       makeHistory('claude')
     );
 
-    expect(status.runtimeState).toBe('ready');
-    expect(status.authState).toBe('authenticated');
+    expect(status.runtimeState).toBe('unknown');
+    expect(status.authState).toBe('unknown');
+    expect(status.message).toBe('Run Check chat to verify the non-interactive CLI path');
+    expect(status.warnings).toContain(
+      'Claude Code auth status does not prove non-interactive chat readiness; use Check chat.'
+    );
+    expect(status.remediation?.commands).toEqual(['claude auth login']);
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
