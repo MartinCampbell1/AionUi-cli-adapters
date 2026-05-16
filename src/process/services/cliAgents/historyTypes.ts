@@ -17,7 +17,7 @@ export interface CliHistoryMessage {
 }
 
 export interface CliHistorySession extends CliAgentHistorySession {
-  sourceKind: 'codex-jsonl' | 'claude-jsonl' | 'hermes-state-db' | 'opencode-db';
+  sourceKind: 'codex-jsonl' | 'claude-jsonl' | 'droid-jsonl' | 'hermes-state-db' | 'opencode-db';
   messages: CliHistoryMessage[];
 }
 

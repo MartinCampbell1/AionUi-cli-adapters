@@ -73,7 +73,7 @@ export interface CliAgentHistoryListResult {
 export interface CliAgentImportedHistoryExtra {
   provider: CliAgentBackend;
   sourceSessionId: string;
-  sourceKind: 'codex-jsonl' | 'claude-jsonl' | 'hermes-state-db' | 'opencode-db';
+  sourceKind: 'codex-jsonl' | 'claude-jsonl' | 'droid-jsonl' | 'hermes-state-db' | 'opencode-db';
   sourcePath?: string;
   importedAt: number;
   messageCount: number;

@@ -11,6 +11,7 @@ import { execFileSync } from 'child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createClaudeHistoryReader } from '@/process/services/cliAgents/adapters/claudeHistory';
 import { createCodexHistoryReader } from '@/process/services/cliAgents/adapters/codexHistory';
+import { createDroidHistoryReader } from '@/process/services/cliAgents/adapters/droidHistory';
 import { createHermesHistoryReader } from '@/process/services/cliAgents/adapters/hermesHistory';
 import { createOpenCodeHistoryReader } from '@/process/services/cliAgents/adapters/opencodeHistory';
 import { runSqliteJson } from '@/process/services/cliAgents/adapters/sqliteCli';
@@ -103,6 +104,69 @@ describe('cli agent history readers', () => {
     expect(result.sessions).toHaveLength(1);
     expect(result.sessions[0].sourceSessionId).toBe('claude-session');
     expect(result.sessions[0].messages.map((message) => message.text)).toEqual(['hello claude', 'hello human']);
+  });
+
+  it('reads Factory Droid JSONL sessions and skips system reminders/tool-only turns', async () => {
+    const home = await makeTempHome();
+    const dir = path.join(home, '.factory', 'sessions', '-tmp-droid-project');
+    await fs.promises.mkdir(dir, { recursive: true });
+    const file = path.join(dir, 'droid-session.jsonl');
+    const rows = [
+      {
+        type: 'session_start',
+        id: 'droid-session',
+        sessionTitle: 'Droid fixture',
+        cwd: '/tmp/droid-project',
+      },
+      {
+        type: 'message',
+        id: 'm-user',
+        timestamp: '2026-01-01T00:00:01.000Z',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: '<system-reminder>skip this</system-reminder>' },
+            { type: 'text', text: 'hello droid' },
+          ],
+        },
+      },
+      {
+        type: 'message',
+        id: 'm-tool-only',
+        timestamp: '2026-01-01T00:00:02.000Z',
+        message: { role: 'assistant', content: [{ type: 'tool_use', id: 'tool-1', name: 'read', input: {} }] },
+      },
+      {
+        type: 'message',
+        id: 'm-tool-result',
+        timestamp: '2026-01-01T00:00:03.000Z',
+        message: { role: 'user', content: [{ type: 'tool_result', content: 'skip tool result' }] },
+      },
+      {
+        type: 'message',
+        id: 'm-assistant',
+        timestamp: '2026-01-01T00:00:04.000Z',
+        message: { role: 'assistant', content: [{ type: 'text', text: 'hello back from droid' }] },
+      },
+      {
+        type: 'session_end',
+        timestamp: '2026-01-01T00:00:05.000Z',
+        finalText: 'duplicate final text',
+      },
+    ];
+    await fs.promises.writeFile(file, `${rows.map((row) => JSON.stringify(row)).join('\n')}\n`);
+
+    const result = await createDroidHistoryReader(home).listSessions({ limit: 10 });
+
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].sourceKind).toBe('droid-jsonl');
+    expect(result.sessions[0].sourceSessionId).toBe('droid-session');
+    expect(result.sessions[0].workspace).toBe('/tmp/droid-project');
+    expect(result.sessions[0].title).toBe('Droid fixture');
+    expect(result.sessions[0].messages.map((message) => message.text)).toEqual([
+      'hello droid',
+      'hello back from droid',
+    ]);
   });
 
   it('reads Hermes state.db sessions and hides system/tool messages', async () => {

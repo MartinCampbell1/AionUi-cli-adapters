@@ -137,7 +137,8 @@ export const CLI_AGENT_DESCRIPTORS: Record<CliAgentBackend, CliAgentDescriptor> 
     command: ACP_BACKENDS_ALL.droid.cliCommand || 'droid',
     versionArgs: ['--version'],
     probeTimeoutMs: 15_000,
-    historyLabel: 'Factory Droid history',
+    historyLabel: 'Factory Droid sessions JSONL',
+    defaultHistoryPath: '~/.factory/sessions',
     remediation: {
       title: 'Complete Factory Droid CLI login',
       description:

@@ -82,7 +82,7 @@ const agents = [
     versionArgs: ['--version'],
     chatArgs: ['exec', '--output-format', 'text', 'Reply with exactly: droid adapter ok'],
     timeoutMs: 25_000,
-    historyNote: 'Droid history import is not enabled until a stable local transcript store is identified.',
+    history: [{ label: 'Factory Droid sessions JSONL', dir: path.join(HOME, '.factory', 'sessions'), ext: '.jsonl' }],
   },
 ];
 

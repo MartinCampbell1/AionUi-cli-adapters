@@ -10,6 +10,7 @@ import type { CliHistoryReader, CliHistorySession } from './historyTypes';
 import { toHistorySessionSummary } from './historyTypes';
 import { createClaudeHistoryReader } from './adapters/claudeHistory';
 import { createCodexHistoryReader } from './adapters/codexHistory';
+import { createDroidHistoryReader } from './adapters/droidHistory';
 import { createHermesHistoryReader } from './adapters/hermesHistory';
 import { createOpenCodeHistoryReader } from './adapters/opencodeHistory';
 import { createUnsupportedHistoryReader } from './adapters/unsupportedHistory';
@@ -17,6 +18,7 @@ import { createUnsupportedHistoryReader } from './adapters/unsupportedHistory';
 export function createHistoryReader(backend: CliAgentBackend): CliHistoryReader {
   if (backend === 'claude') return createClaudeHistoryReader();
   if (backend === 'codex') return createCodexHistoryReader();
+  if (backend === 'droid') return createDroidHistoryReader();
   if (backend === 'hermes') return createHermesHistoryReader();
   if (backend === 'opencode') return createOpenCodeHistoryReader();
   return createUnsupportedHistoryReader(backend);
@@ -57,7 +59,7 @@ export async function getHistorySummary(backend: CliAgentBackend): Promise<CliAg
     if (!newest || session.updatedAt > newest) return session.updatedAt;
     return newest;
   }, undefined);
-  const supportedBackends: CliAgentBackend[] = ['claude', 'codex', 'hermes', 'opencode'];
+  const supportedBackends: CliAgentBackend[] = ['claude', 'codex', 'droid', 'hermes', 'opencode'];
   const support = supportedBackends.includes(backend)
     ? result.sessions.length > 0
       ? 'supported'
