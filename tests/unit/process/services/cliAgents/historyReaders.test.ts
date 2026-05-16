@@ -13,6 +13,7 @@ import { createClaudeHistoryReader } from '@/process/services/cliAgents/adapters
 import { createCodexHistoryReader } from '@/process/services/cliAgents/adapters/codexHistory';
 import { createHermesHistoryReader } from '@/process/services/cliAgents/adapters/hermesHistory';
 import { createOpenCodeHistoryReader } from '@/process/services/cliAgents/adapters/opencodeHistory';
+import { runSqliteJson } from '@/process/services/cliAgents/adapters/sqliteCli';
 
 const tempRoots: string[] = [];
 
@@ -211,5 +212,63 @@ describe('cli agent history readers', () => {
       'hello opencode',
       'hello back from opencode',
     ]);
+  });
+
+  it('falls back to an immutable OpenCode SQLite URI when the live database is locked', async () => {
+    const home = await makeTempHome();
+    const db = path.join(home, '.local', 'share', 'opencode', 'opencode.db');
+    await fs.promises.mkdir(path.dirname(db), { recursive: true });
+    writeSqliteDb(
+      db,
+      `
+      create table session (
+        id text primary key,
+        title text,
+        slug text,
+        directory text,
+        time_created integer,
+        time_updated integer
+      );
+      create table message (
+        id text primary key,
+        session_id text,
+        data text,
+        time_created integer
+      );
+      create table part (
+        id text primary key,
+        message_id text,
+        data text,
+        time_created integer
+      );
+      insert into session values (
+        'locked-opencode-session',
+        'OpenCode locked fixture',
+        'opencode-locked-fixture',
+        '/tmp/opencode-locked-project',
+        1770000001000,
+        1770000002000
+      );
+      insert into message values ('m-user', 'locked-opencode-session', '{"role":"user"}', 1770000001001);
+      insert into part values ('p-user', 'm-user', '{"type":"text","text":"hello from locked db"}', 1770000001001);
+      `
+    );
+    const databasePaths: string[] = [];
+
+    const lockedThenImmutableRunner = async <T extends Record<string, unknown>>(databasePath: string, sql: string) => {
+      databasePaths.push(databasePath);
+      if (!databasePath.startsWith('file://')) {
+        throw new Error('database is locked (5)');
+      }
+      return runSqliteJson<T>(databasePath, sql);
+    };
+
+    const result = await createOpenCodeHistoryReader(home, lockedThenImmutableRunner).listSessions({ limit: 10 });
+
+    expect(result.warnings).toEqual([]);
+    expect(databasePaths.some((databasePath) => databasePath.startsWith('file://'))).toBe(true);
+    expect(result.sessions).toHaveLength(1);
+    expect(result.sessions[0].sourceSessionId).toBe('locked-opencode-session');
+    expect(result.sessions[0].messages.map((message) => message.text)).toEqual(['hello from locked db']);
   });
 });

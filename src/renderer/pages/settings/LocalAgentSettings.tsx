@@ -32,6 +32,12 @@ const LocalAgentSettings: React.FC = () => {
   const params = useParams<{ backend: string }>();
   const backend = params.backend && isCliAgentBackend(params.backend) ? params.backend : undefined;
   const [importing, setImporting] = useState(false);
+  const [checkingChat, setCheckingChat] = useState(false);
+  const [chatCheckResult, setChatCheckResult] = useState<{
+    ok: boolean;
+    latency?: number;
+    message: string;
+  }>();
 
   const statusKey = backend ? ['cli-agent-status', backend] : null;
   const sessionsKey = backend ? ['cli-agent-history-sessions', backend] : null;
@@ -101,6 +107,38 @@ const LocalAgentSettings: React.FC = () => {
     }
   };
 
+  const handleCheckChat = async () => {
+    if (!backend) return;
+    setCheckingChat(true);
+    setChatCheckResult(undefined);
+
+    try {
+      const result = await ipcBridge.acpConversation.checkAgentHealth.invoke({ backend });
+      if (result.success && result.data?.available) {
+        const latency = result.data.latency;
+        const message = t('settings.localAgent.chatCheckSuccess', {
+          latency: latency ?? '-',
+        });
+        setChatCheckResult({ ok: true, latency, message });
+        Message.success(message);
+        return;
+      }
+
+      const message =
+        result.msg ||
+        result.data?.error ||
+        t('settings.localAgent.chatCheckFailed', { defaultValue: 'Chat check failed' });
+      setChatCheckResult({ ok: false, message });
+      Message.warning(message);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : t('settings.localAgent.chatCheckFailed');
+      setChatCheckResult({ ok: false, message });
+      Message.error(message);
+    } finally {
+      setCheckingChat(false);
+    }
+  };
+
   const handleStartChat = async () => {
     if (!backend) return;
     await ConfigStorage.set('guid.lastSelectedAgent', backend);
@@ -134,6 +172,15 @@ const LocalAgentSettings: React.FC = () => {
           <div className='flex flex-wrap gap-8px'>
             <Button size='small' icon={<Refresh size='14' />} onClick={() => void handleRefresh()}>
               {t('common.refresh', { defaultValue: 'Refresh' })}
+            </Button>
+            <Button
+              size='small'
+              icon={<CheckOne size='14' />}
+              loading={checkingChat}
+              disabled={!status || status.runtimeState === 'unavailable'}
+              onClick={() => void handleCheckChat()}
+            >
+              {t('settings.localAgent.checkChat')}
             </Button>
             <Button size='small' type='primary' icon={<Play size='14' />} onClick={() => void handleStartChat()}>
               {t('settings.localAgent.startChat')}
@@ -201,6 +248,25 @@ const LocalAgentSettings: React.FC = () => {
               </Button>
             </div>
           </div>
+        )}
+
+        {chatCheckResult && (
+          <Alert
+            type={chatCheckResult.ok ? 'success' : 'warning'}
+            icon={chatCheckResult.ok ? <CheckOne size='16' /> : <Caution size='16' />}
+            content={
+              <div className='flex flex-col gap-4px'>
+                <Typography.Text className='text-13px font-medium'>
+                  {chatCheckResult.ok
+                    ? t('settings.localAgent.chatCheckReady')
+                    : t('settings.localAgent.chatCheckNotReady')}
+                </Typography.Text>
+                <Typography.Text type='secondary' className='text-12px'>
+                  {chatCheckResult.message}
+                </Typography.Text>
+              </div>
+            }
+          />
         )}
 
         {warnings.length > 0 && (
