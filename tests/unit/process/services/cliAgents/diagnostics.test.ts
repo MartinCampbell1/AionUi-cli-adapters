@@ -67,7 +67,7 @@ describe('cli agent diagnostics', () => {
     expect(status.warnings).toContain(
       'Claude Code auth status does not prove non-interactive chat readiness; use Check chat.'
     );
-    expect(status.remediation?.commands).toEqual(['claude auth login']);
+    expect(status.remediation?.commands).toEqual(['claude auth login --claudeai']);
     expect(runner).toHaveBeenCalledTimes(2);
   });
 

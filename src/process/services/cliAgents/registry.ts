@@ -56,9 +56,9 @@ export const CLI_AGENT_DESCRIPTORS: Record<CliAgentBackend, CliAgentDescriptor> 
     remediation: {
       title: 'Repair Claude Code CLI login',
       description:
-        'AionUi reuses the local Claude Code CLI session. If chat returns 401, refresh the Claude CLI login in Terminal.',
-      commands: ['claude auth login'],
-      verifyCommands: ['claude auth status'],
+        'AionUi reuses the local Claude Code CLI session. If chat returns 401 even while auth status says logged in, refresh the Claude CLI login in Terminal.',
+      commands: ['claude auth login --claudeai'],
+      verifyCommands: ['claude -p "hello" --dangerously-skip-permissions --output-format text'],
     },
   },
   codex: {

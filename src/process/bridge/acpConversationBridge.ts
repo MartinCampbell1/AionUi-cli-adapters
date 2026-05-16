@@ -99,12 +99,10 @@ export function initAcpConversationBridge(workerTaskManager: IWorkerTaskManager)
         const directError = directHealth.error || `${backend} CLI unavailable`;
         return {
           success: false,
-          msg: directHealth.authRequired
-            ? `${backend} not authenticated`
-            : `${backend} health check failed: ${directError}`,
+          msg: directError,
           data: {
             available: false,
-            error: directHealth.authRequired ? 'Not authenticated' : directError,
+            error: directError,
           },
         };
       }

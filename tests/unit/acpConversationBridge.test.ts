@@ -177,7 +177,7 @@ describe('acpConversationBridge', () => {
     expect(legacyConnectorMock.LegacyConnectorFactory).not.toHaveBeenCalled();
   });
 
-  it('checkAgentHealth maps direct CLI auth failures to the standard health response', async () => {
+  it('checkAgentHealth preserves direct CLI auth failure details', async () => {
     directTurnMock.probeDirectCliTurnHealth.mockResolvedValue({
       available: false,
       latency: 7,
@@ -189,8 +189,11 @@ describe('acpConversationBridge', () => {
 
     expect(result).toEqual({
       success: false,
-      msg: 'droid not authenticated',
-      data: { available: false, error: 'Not authenticated' },
+      msg: 'Factory Droid CLI is installed, but its local authentication is not ready.',
+      data: {
+        available: false,
+        error: 'Factory Droid CLI is installed, but its local authentication is not ready.',
+      },
     });
     expect(legacyConnectorMock.LegacyConnectorFactory).not.toHaveBeenCalled();
   });
