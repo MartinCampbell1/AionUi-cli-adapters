@@ -9,9 +9,59 @@ const {
   getModulesToRebuild,
 } = require('./rebuildNativeModules');
 
+function getResourcesDir(context) {
+  const { electronPlatformName, appOutDir, packager } = context;
+
+  // Determine resources directory based on platform
+  // macOS: appOutDir/AionUi.app/Contents/Resources
+  // Windows/Linux: appOutDir/resources
+  if (electronPlatformName === 'darwin') {
+    const appName = packager?.appInfo?.productFilename || 'AionUi';
+    return path.join(appOutDir, `${appName}.app`, 'Contents', 'Resources');
+  }
+
+  return path.join(appOutDir, 'resources');
+}
+
+function assertPackagedNativeModules(nodeModulesDir, modulesToVerify, platformArchLabel) {
+  const failedModules = [];
+
+  for (const moduleName of modulesToVerify) {
+    const moduleRoot = path.join(nodeModulesDir, moduleName);
+
+    if (!fs.existsSync(moduleRoot)) {
+      console.error(`   ✗ ${moduleName} is missing from app.asar.unpacked`);
+      failedModules.push(moduleName);
+      continue;
+    }
+
+    const verified = verifyModuleBinary(moduleRoot, moduleName);
+    if (verified) {
+      console.log(`   ✓ ${moduleName} packaged binary verified`);
+    } else {
+      console.error(`   ✗ ${moduleName} packaged binary missing`);
+      failedModules.push(moduleName);
+    }
+  }
+
+  if (failedModules.length > 0) {
+    throw new Error(
+      [
+        `Packaged native module verification failed for ${platformArchLabel}: ${failedModules.join(', ')}`,
+        'The app may otherwise build but open as a blank window at runtime.',
+        'Rebuild native app dependencies before packaging, for example:',
+        '  bunx electron-builder install-app-deps',
+        'or force the afterPack rebuild with:',
+        '  FORCE_NATIVE_REBUILD=true bun run build-mac:arm64',
+      ].join('\n')
+    );
+  }
+}
+
 /**
  * afterPack hook for electron-builder
- * Rebuilds native modules for cross-architecture builds
+ * Rebuilds native modules for cross-architecture builds and always verifies
+ * that required native binaries made it into app.asar.unpacked.
  */
 
 module.exports = async function afterPack(context) {
@@ -27,43 +77,9 @@ module.exports = async function afterPack(context) {
   const needsSameArchRebuild = electronPlatformName === 'win32'; // 只有 Windows 需要同架构重建以匹配 Electron ABI | Only Windows needs same-arch rebuild to match Electron ABI
   // Linux 使用预编译二进制，避免 GLIBC 版本依赖 | Linux uses prebuilt binaries which are GLIBC-independent
 
-  if (!isCrossCompile && !needsSameArchRebuild && !forceRebuild) {
-    console.log(`   ✓ Same architecture, rebuild skipped (set FORCE_NATIVE_REBUILD=true to override)\n`);
-    return;
-  }
-
-  // Note: Previously there was an optimization to skip macOS cross-compilation,
-  // but this caused incorrect architecture binaries (arm64) to be included in x64 builds.
-  // Now we always rebuild native modules for cross-compilation to ensure correctness.
-  // The rebuild process uses prebuild-install first (fast), falling back to source compilation only when needed.
-
-  if (isCrossCompile) {
-    console.log(`   ⚠️  Cross-compilation detected (${buildArch} → ${targetArch}), will rebuild native modules`);
-    if (electronPlatformName === 'darwin') {
-      console.log(`   💡 Using prebuild-install for faster cross-architecture build`);
-    }
-  } else if (needsSameArchRebuild || forceRebuild) {
-    console.log(`   ℹ️  Rebuilding native modules for platform requirements (force=${forceRebuild})`);
-  }
-
   console.log(`\n🔧 Checking native modules (${electronPlatformName}-${targetArch})...`);
   console.log(`   appOutDir: ${appOutDir}`);
-
-  const electronVersion =
-    packager?.info?.electronVersion ??
-    packager?.config?.electronVersion ??
-    require('../package.json').devDependencies?.electron?.replace(/^\D*/, '');
-
-  // Determine resources directory based on platform
-  // macOS: appOutDir/AionUi.app/Contents/Resources
-  // Windows/Linux: appOutDir/resources
-  let resourcesDir;
-  if (electronPlatformName === 'darwin') {
-    const appName = packager?.appInfo?.productFilename || 'AionUi';
-    resourcesDir = path.join(appOutDir, `${appName}.app`, 'Contents', 'Resources');
-  } else {
-    resourcesDir = path.join(appOutDir, 'resources');
-  }
+  const resourcesDir = getResourcesDir(context);
 
   // Debug: check what's in resources directory
   console.log(`   Checking resources directory: ${resourcesDir}`);
@@ -99,6 +115,32 @@ module.exports = async function afterPack(context) {
   // Use platform-specific module list (Windows skips node-pty due to cross-compilation issues)
   const modulesToRebuild = getModulesToRebuild(electronPlatformName);
   console.log(`   Modules to rebuild: ${modulesToRebuild.join(', ')}`);
+
+  if (!isCrossCompile && !needsSameArchRebuild && !forceRebuild) {
+    console.log(`   ✓ Same architecture, rebuild skipped (set FORCE_NATIVE_REBUILD=true to override)`);
+    assertPackagedNativeModules(nodeModulesDir, modulesToRebuild, `${electronPlatformName}-${targetArch}`);
+    console.log(`✅ Packaged native modules verified for ${targetArch}\n`);
+    return;
+  }
+
+  // Note: Previously there was an optimization to skip macOS cross-compilation,
+  // but this caused incorrect architecture binaries (arm64) to be included in x64 builds.
+  // Now we always rebuild native modules for cross-compilation to ensure correctness.
+  // The rebuild process uses prebuild-install first (fast), falling back to source compilation only when needed.
+
+  if (isCrossCompile) {
+    console.log(`   ⚠️  Cross-compilation detected (${buildArch} → ${targetArch}), will rebuild native modules`);
+    if (electronPlatformName === 'darwin') {
+      console.log(`   💡 Using prebuild-install for faster cross-architecture build`);
+    }
+  } else if (needsSameArchRebuild || forceRebuild) {
+    console.log(`   ℹ️  Rebuilding native modules for platform requirements (force=${forceRebuild})`);
+  }
+
+  const electronVersion =
+    packager?.info?.electronVersion ??
+    packager?.config?.electronVersion ??
+    require('../package.json').devDependencies?.electron?.replace(/^\D*/, '');
 
   // For cross-compilation, clean up build artifacts from the wrong architecture
   // This prevents node-gyp-build from loading incorrect binaries
