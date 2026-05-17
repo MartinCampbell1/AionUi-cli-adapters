@@ -32,10 +32,13 @@ describe('direct CLI turn backend routing', () => {
     expect(spec.args).toEqual([
       '-p',
       'hello',
+      '--setting-sources',
+      'project,local',
       '--dangerously-skip-permissions',
       '--output-format',
       'text',
       '--no-session-persistence',
+      '--no-chrome',
       '--disable-slash-commands',
       '--strict-mcp-config',
       '--mcp-config',

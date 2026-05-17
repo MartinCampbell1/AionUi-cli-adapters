@@ -5,6 +5,9 @@
  */
 
 import { execFile } from 'child_process';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import type {
   CliAgentAuthState,
   CliAgentBackend,
@@ -104,6 +107,38 @@ function getRemediation(
   return getCliAgentDescriptor(backend).remediation;
 }
 
+function getDiagnosticsHome(): string {
+  return process.env.AIONUI_CLI_DIAGNOSTICS_HOME || os.homedir();
+}
+
+function readJsonFile(pathname: string): unknown {
+  try {
+    return JSON.parse(fs.readFileSync(pathname, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+function readClaudeOauthExpiry(homeDir = getDiagnosticsHome()): { expiresAt: number; iso: string } | undefined {
+  const credentials = readJsonFile(path.join(homeDir, '.claude', '.credentials.json')) as
+    | { claudeAiOauth?: { expiresAt?: unknown } }
+    | undefined;
+  const expiresAt = credentials?.claudeAiOauth?.expiresAt;
+  if (typeof expiresAt !== 'number' || !Number.isFinite(expiresAt)) return undefined;
+
+  return {
+    expiresAt,
+    iso: new Date(expiresAt).toISOString(),
+  };
+}
+
+function hasDroidCustomModels(homeDir = getDiagnosticsHome()): boolean {
+  const settings = readJsonFile(path.join(homeDir, '.factory', 'settings.json')) as
+    | { customModels?: unknown[] }
+    | undefined;
+  return Array.isArray(settings?.customModels) && settings.customModels.length > 0;
+}
+
 export async function probeCliAgentStatus(
   backend: CliAgentBackend,
   detectedAgent?: CliDetectedAgentInfo,
@@ -142,6 +177,12 @@ export async function probeCliAgentStatus(
   }
 
   if (backend === 'droid') {
+    if (hasDroidCustomModels() && !process.env.FACTORY_API_KEY) {
+      warnings.push(
+        'Factory Droid has custom models configured, but droid exec still requires Factory CLI login or FACTORY_API_KEY before chat can start.'
+      );
+    }
+
     const runtimeState = 'login-required';
     warnings.push('Factory Droid auth status can be interactive; login is required before chat is enabled.');
     return {
@@ -180,12 +221,35 @@ export async function probeCliAgentStatus(
   const authResult = await runner(command, descriptor.authProbe.args, probeTimeoutMs);
   const authOutput = compactOutput(authResult);
   const authState = parseAuthState(backend, authOutput);
+  const claudeOauthExpiry = backend === 'claude' ? readClaudeOauthExpiry() : undefined;
+  const claudeOauthExpired = Boolean(claudeOauthExpiry && claudeOauthExpiry.expiresAt <= Date.now());
 
   if (authResult.timedOut) {
     warnings.push(`${descriptor.name} auth probe timed out`);
   }
 
   if (authState === 'authenticated') {
+    if (claudeOauthExpired && claudeOauthExpiry) {
+      const runtimeState = 'login-required';
+      warnings.push(
+        `Claude Code OAuth token expired on ${claudeOauthExpiry.iso}; auth status can still report logged in until chat is attempted.`
+      );
+      return {
+        backend,
+        name: descriptor.name,
+        installed: true,
+        cliPath: detectedAgent?.cliPath || command,
+        acpArgs: detectedAgent?.acpArgs,
+        version,
+        authState: 'login-required',
+        runtimeState,
+        message: `Claude Code OAuth token expired on ${claudeOauthExpiry.iso}`,
+        warnings: [...warnings, ...history.warnings],
+        remediation: getRemediation(backend, runtimeState),
+        history,
+      };
+    }
+
     if (descriptor.authProbe.provesChatReadiness === false) {
       const runtimeState = 'unknown';
       warnings.push(`${descriptor.name} auth status does not prove non-interactive chat readiness; use Check chat.`);

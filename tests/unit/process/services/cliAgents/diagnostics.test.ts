@@ -4,7 +4,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { describe, expect, it, vi } from 'vitest';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CliAgentHistorySummary } from '@/common/types/cliAgent';
 import { probeCliAgentStatus, type CliCommandRunner } from '@/process/services/cliAgents/diagnostics';
 
@@ -21,6 +24,19 @@ function makeHistory(backend: CliAgentHistorySummary['backend']): CliAgentHistor
 }
 
 describe('cli agent diagnostics', () => {
+  let tempHome: string;
+
+  beforeEach(() => {
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'aionui-cli-diagnostics-test-'));
+    vi.stubEnv('AIONUI_CLI_DIAGNOSTICS_HOME', tempHome);
+    vi.stubEnv('FACTORY_API_KEY', '');
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    fs.rmSync(tempHome, { recursive: true, force: true });
+  });
+
   it('marks Codex authenticated from login status output', async () => {
     const runner = vi.fn<CliCommandRunner>(async (_command, args) => {
       if (args[0] === '--version') {
@@ -71,6 +87,46 @@ describe('cli agent diagnostics', () => {
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
+  it('marks Claude login required when local OAuth metadata is expired', async () => {
+    const claudeDir = path.join(tempHome, '.claude');
+    fs.mkdirSync(claudeDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(claudeDir, '.credentials.json'),
+      JSON.stringify({
+        claudeAiOauth: {
+          accessToken: 'redacted',
+          refreshToken: 'redacted',
+          expiresAt: Date.now() - 60_000,
+        },
+      })
+    );
+
+    const runner = vi.fn<CliCommandRunner>(async (_command, args) => {
+      if (args[0] === '--version') {
+        return { exitCode: 0, stdout: '2.1.126 (Claude Code)\n', stderr: '', timedOut: false };
+      }
+      return {
+        exitCode: 0,
+        stdout: '{\n  "loggedIn": true,\n  "authMethod": "claude.ai"\n}\n',
+        stderr: '',
+        timedOut: false,
+      };
+    });
+
+    const status = await probeCliAgentStatus(
+      'claude',
+      { backend: 'claude', name: 'Claude Code', cliPath: '/Users/test/.local/bin/claude' },
+      runner,
+      makeHistory('claude')
+    );
+
+    expect(status.runtimeState).toBe('login-required');
+    expect(status.authState).toBe('login-required');
+    expect(status.message).toContain('Claude Code OAuth token expired');
+    expect(status.warnings.some((warning) => warning.includes('auth status can still report logged in'))).toBe(true);
+    expect(status.remediation?.commands).toEqual(['claude auth login --claudeai']);
+  });
+
   it('does not call interactive Droid auth status', async () => {
     const runner = vi.fn<CliCommandRunner>(async () => ({
       exitCode: 0,
@@ -91,6 +147,34 @@ describe('cli agent diagnostics', () => {
     expect(status.remediation?.commands).toEqual(['droid', 'export FACTORY_API_KEY=fk-...']);
     expect(status.remediation?.verifyCommands).toEqual(['droid exec --output-format text "hello"']);
     expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  it('explains that Droid custom models still require Factory auth', async () => {
+    const factoryDir = path.join(tempHome, '.factory');
+    fs.mkdirSync(factoryDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(factoryDir, 'settings.json'),
+      JSON.stringify({ customModels: [{ id: 'custom:local-codex-lb' }] })
+    );
+
+    const runner = vi.fn<CliCommandRunner>(async () => ({
+      exitCode: 0,
+      stdout: '0.102.0\n',
+      stderr: '',
+      timedOut: false,
+    }));
+
+    const status = await probeCliAgentStatus(
+      'droid',
+      { backend: 'droid', name: 'Factory Droid', cliPath: '/Users/test/.local/bin/droid' },
+      runner,
+      makeHistory('droid')
+    );
+
+    expect(status.runtimeState).toBe('login-required');
+    expect(status.warnings).toContain(
+      'Factory Droid has custom models configured, but droid exec still requires Factory CLI login or FACTORY_API_KEY before chat can start.'
+    );
   });
 
   it('includes provider login remediation for unauthenticated OpenCode', async () => {

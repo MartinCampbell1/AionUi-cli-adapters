@@ -1,5 +1,8 @@
-import { execFile as execFileCb } from 'child_process';
-import { promisify } from 'util';
+import { spawn, type StdioOptions } from 'child_process';
+import { closeSync, openSync } from 'fs';
+import { mkdtemp, readFile, rm } from 'fs/promises';
+import os from 'os';
+import path from 'path';
 import { ipcBridge } from '@/common';
 import { transformMessage } from '@/common/chat/chatLib';
 import { uuid } from '@/common/utils';
@@ -7,8 +10,6 @@ import type { IResponseMessage } from '@/common/adapter/ipcBridge';
 import type { AcpBackend } from '@/common/types/acpTypes';
 import { addOrUpdateMessage } from '@process/utils/message';
 import { prepareCleanEnv } from '@process/agent/acp/acpConnectors';
-
-const execFile = promisify(execFileCb);
 
 export type DirectCliBackend = Extract<AcpBackend, 'claude' | 'droid' | 'hermes'> | 'gemini';
 
@@ -47,6 +48,19 @@ type CommandSpec = {
   timeoutMs: number;
 };
 
+type DirectCommandResult = {
+  stdout: string;
+  stderr: string;
+};
+
+type DirectCommandError = Error & {
+  stdout?: string;
+  stderr?: string;
+  killed?: boolean;
+  code?: number | null;
+  signal?: NodeJS.Signals | null;
+};
+
 const CLAUDE_EMPTY_MCP_CONFIG = JSON.stringify({ mcpServers: {} });
 
 function buildPrompt(input: string, files?: string[]): string {
@@ -63,16 +77,19 @@ export function getDirectCliCommandSpec(backend: DirectCliBackend, prompt: strin
         args: [
           '-p',
           prompt,
+          '--setting-sources',
+          'project,local',
           '--dangerously-skip-permissions',
           '--output-format',
           'text',
           '--no-session-persistence',
+          '--no-chrome',
           '--disable-slash-commands',
           '--strict-mcp-config',
           '--mcp-config',
           CLAUDE_EMPTY_MCP_CONFIG,
         ],
-        timeoutMs: 60_000,
+        timeoutMs: 300_000,
       };
     case 'gemini':
       return {
@@ -101,8 +118,11 @@ async function prepareDirectCliEnv(backend: DirectCliBackend): Promise<Record<st
   if (backend === 'claude') {
     // Claude Code should use its own CLI login store here. API model settings
     // from AionUi can otherwise force Anthropic Console mode and break OAuth.
-    delete env.ANTHROPIC_API_KEY;
-    delete env.ANTHROPIC_BASE_URL;
+    for (const key of Object.keys(env)) {
+      if (key.startsWith('ANTHROPIC_') || key === 'CLAUDE_CODE_USE_BEDROCK' || key === 'CLAUDE_CODE_USE_VERTEX') {
+        delete env[key];
+      }
+    }
   }
 
   return env;
@@ -125,9 +145,9 @@ function formatCliError(
 
   if (backend === 'claude' && error.killed) {
     return [
-      "Claude Code CLI did not return before AionUi's health-check timeout.",
+      "Claude Code CLI did not return before AionUi's CLI timeout.",
       'This usually means the local Claude CLI is waiting on an expired login, an invalid credential, or a local bootstrap prompt.',
-      'Run `claude auth login --claudeai`, then verify with `claude -p "hello" --dangerously-skip-permissions --output-format text`.',
+      'Run `claude auth login --claudeai`, then verify with `claude -p "hello" --setting-sources project,local --dangerously-skip-permissions --output-format text --no-session-persistence --no-chrome --disable-slash-commands --strict-mcp-config --mcp-config \'{"mcpServers":{}}\'`.',
       parts,
     ]
       .filter(Boolean)
@@ -139,7 +159,7 @@ function formatCliError(
       'Claude Code CLI is installed, but non-interactive chat authentication failed.',
       'AionUi launches Claude through `claude -p` and reuses the same local Claude Code CLI login.',
       '`claude auth status` can be stale; refresh the CLI login with `claude auth login --claudeai`.',
-      'Verify in Terminal with `claude -p "hello" --dangerously-skip-permissions --output-format text`.',
+      'Verify in Terminal with `claude -p "hello" --setting-sources project,local --dangerously-skip-permissions --output-format text --no-session-persistence --no-chrome --disable-slash-commands --strict-mcp-config --mcp-config \'{"mcpServers":{}}\'`.',
       parts,
     ]
       .filter(Boolean)
@@ -162,7 +182,142 @@ function formatCliError(
 
 function getHealthTimeoutMs(backend: DirectCliBackend, spec: CommandSpec): number {
   if (backend === 'claude') return Math.min(spec.timeoutMs, 25_000);
-  return Math.min(spec.timeoutMs, 60_000);
+  return Math.min(spec.timeoutMs, 120_000);
+}
+
+async function runCliCommand(
+  spec: CommandSpec,
+  options: {
+    cwd?: string;
+    env: Record<string, string | undefined>;
+    timeoutMs: number;
+    signal?: AbortSignal;
+    maxBuffer: number;
+  }
+): Promise<DirectCommandResult> {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'aionui-cli-'));
+  const stdoutPath = path.join(tempDir, 'stdout.txt');
+  const stderrPath = path.join(tempDir, 'stderr.txt');
+  const isPosix = process.platform !== 'win32';
+  const stdoutFd = isPosix ? null : openSync(stdoutPath, 'w');
+  const stderrFd = isPosix ? null : openSync(stderrPath, 'w');
+  let closedFiles = false;
+
+  const closeOutputFiles = () => {
+    if (closedFiles) return;
+    closedFiles = true;
+    if (stdoutFd !== null) closeSync(stdoutFd);
+    if (stderrFd !== null) closeSync(stderrFd);
+  };
+
+  const readOutputs = async (): Promise<DirectCommandResult> => {
+    const [stdout, stderr] = await Promise.all([
+      readFile(stdoutPath, 'utf8').catch(() => ''),
+      readFile(stderrPath, 'utf8').catch(() => ''),
+    ]);
+    return { stdout, stderr };
+  };
+
+  try {
+    return await new Promise((resolve, reject) => {
+      const spawnEnv = { ...options.env };
+      let spawnCommand = spec.command;
+      let spawnArgs = spec.args;
+      let stdio: StdioOptions = ['ignore', stdoutFd ?? 'ignore', stderrFd ?? 'ignore'];
+
+      if (options.cwd && process.platform !== 'win32') {
+        spawnEnv.PWD = options.cwd;
+      }
+
+      if (isPosix) {
+        spawnEnv.AIONUI_CLI_STDOUT = stdoutPath;
+        spawnEnv.AIONUI_CLI_STDERR = stderrPath;
+        spawnCommand = '/bin/sh';
+        spawnArgs = [
+          '-c',
+          'exec "$@" >"$AIONUI_CLI_STDOUT" 2>"$AIONUI_CLI_STDERR"',
+          'aionui-cli',
+          spec.command,
+          ...spec.args,
+        ];
+        stdio = 'ignore';
+      }
+
+      const child = spawn(spawnCommand, spawnArgs, {
+        cwd: options.cwd,
+        env: spawnEnv,
+        stdio,
+      });
+
+      let timedOut = false;
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        options.signal?.removeEventListener('abort', onAbort);
+      };
+
+      const finishReject = async (error: DirectCommandError) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        closeOutputFiles();
+        const { stdout, stderr } = await readOutputs();
+        error.stdout = stdout;
+        error.stderr = stderr;
+        reject(error);
+      };
+
+      const onAbort = () => {
+        child.kill('SIGTERM');
+      };
+
+      const timer = setTimeout(() => {
+        timedOut = true;
+        child.kill('SIGTERM');
+      }, options.timeoutMs);
+
+      if (options.signal?.aborted) {
+        child.kill('SIGTERM');
+      } else {
+        options.signal?.addEventListener('abort', onAbort, { once: true });
+      }
+
+      child.on('error', (error) => {
+        void finishReject(error as DirectCommandError);
+      });
+
+      child.on('close', (code, signal) => {
+        cleanup();
+        if (settled) return;
+        closeOutputFiles();
+
+        void readOutputs().then(({ stdout, stderr }) => {
+          const overflow = stdout.length + stderr.length > options.maxBuffer;
+
+          if (code === 0 && !timedOut && !overflow && !options.signal?.aborted) {
+            settled = true;
+            resolve({ stdout, stderr });
+            return;
+          }
+
+          const error = new Error(`Command failed: ${spec.command} ${spec.args.join(' ')}`) as DirectCommandError;
+          error.code = code;
+          error.signal = signal;
+          error.killed = timedOut || overflow || Boolean(options.signal?.aborted);
+          error.stdout = stdout;
+          error.stderr = stderr;
+          if (timedOut) error.message = `Command timed out: ${spec.command} ${spec.args.join(' ')}`;
+          if (overflow) error.message = `${spec.command} output exceeded ${options.maxBuffer} bytes`;
+          settled = true;
+          reject(error);
+        }, reject);
+      });
+    });
+  } finally {
+    closeOutputFiles();
+    await rm(tempDir, { recursive: true, force: true });
+  }
 }
 
 export function cleanDirectCliOutput(backend: DirectCliBackend, stdout: string): string {
@@ -203,12 +358,11 @@ export async function probeDirectCliTurnHealth(options: DirectHealthOptions): Pr
   const env = await prepareDirectCliEnv(options.backend);
 
   try {
-    const { stdout } = await execFile(spec.command, spec.args, {
+    const { stdout } = await runCliCommand(spec, {
       cwd: options.cwd,
       env,
-      timeout: getHealthTimeoutMs(options.backend, spec),
       signal: options.signal,
-      killSignal: 'SIGTERM',
+      timeoutMs: getHealthTimeoutMs(options.backend, spec),
       maxBuffer: 4 * 1024 * 1024,
     });
     const content = cleanDirectCliOutput(options.backend, stdout);
@@ -256,12 +410,11 @@ export async function runDirectCliTurn(options: DirectTurnOptions): Promise<void
   emitOnly({ type: 'start', conversation_id: options.conversationId, msg_id: msgId, data: null });
 
   try {
-    const { stdout } = await execFile(spec.command, spec.args, {
+    const { stdout } = await runCliCommand(spec, {
       cwd: options.cwd,
       env,
-      timeout: spec.timeoutMs,
       signal: options.signal,
-      killSignal: 'SIGTERM',
+      timeoutMs: spec.timeoutMs,
       maxBuffer: 16 * 1024 * 1024,
     });
     const content = cleanDirectCliOutput(options.backend, stdout);

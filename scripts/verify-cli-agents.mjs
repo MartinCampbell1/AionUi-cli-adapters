@@ -22,10 +22,13 @@ const agents = [
     chatArgs: [
       '-p',
       'Reply with exactly: claude adapter ok',
+      '--setting-sources',
+      'project,local',
       '--dangerously-skip-permissions',
       '--output-format',
       'text',
       '--no-session-persistence',
+      '--no-chrome',
       '--disable-slash-commands',
       '--strict-mcp-config',
       '--mcp-config',
@@ -33,8 +36,11 @@ const agents = [
     ],
     timeoutMs: 25_000,
     env: (env) => {
-      delete env.ANTHROPIC_API_KEY;
-      delete env.ANTHROPIC_BASE_URL;
+      for (const key of Object.keys(env)) {
+        if (key.startsWith('ANTHROPIC_') || key === 'CLAUDE_CODE_USE_BEDROCK' || key === 'CLAUDE_CODE_USE_VERTEX') {
+          delete env[key];
+        }
+      }
       return env;
     },
     history: [{ label: 'Claude projects JSONL', dir: path.join(HOME, '.claude', 'projects'), ext: '.jsonl' }],
@@ -64,7 +70,7 @@ const agents = [
     command: 'hermes',
     versionArgs: ['--version'],
     chatArgs: ['-z', 'Reply with exactly: hermes adapter ok'],
-    timeoutMs: 60_000,
+    timeoutMs: 180_000,
     history: [{ label: 'Hermes state DB', file: path.join(HOME, '.hermes', 'state.db') }],
   },
   {
@@ -152,6 +158,39 @@ function cleanGeminiOutput(text) {
     })
     .join('\n')
     .trim();
+}
+
+function readJsonFile(pathname) {
+  try {
+    return JSON.parse(fs.readFileSync(pathname, 'utf8'));
+  } catch {
+    return undefined;
+  }
+}
+
+function describeCredentialNotes(agent) {
+  if (agent.id === 'claude') {
+    const credentials = readJsonFile(path.join(HOME, '.claude', '.credentials.json'));
+    const expiresAt = credentials?.claudeAiOauth?.expiresAt;
+    if (typeof expiresAt === 'number' && Number.isFinite(expiresAt) && expiresAt <= Date.now()) {
+      return [
+        `Claude Code OAuth token expired on ${new Date(
+          expiresAt
+        ).toISOString()}; auth status can still report logged in until chat is attempted.`,
+      ];
+    }
+  }
+
+  if (agent.id === 'droid') {
+    const settings = readJsonFile(path.join(HOME, '.factory', 'settings.json'));
+    if (Array.isArray(settings?.customModels) && settings.customModels.length > 0 && !process.env.FACTORY_API_KEY) {
+      return [
+        'Factory Droid has custom models configured, but droid exec still requires Factory CLI login or FACTORY_API_KEY before chat can start.',
+      ];
+    }
+  }
+
+  return [];
 }
 
 function cleanOpenCodeOutput(text) {
@@ -349,6 +388,9 @@ for (const agent of agents) {
 
   for (const historyLine of describeHistory(agent)) {
     console.log(`  history: ${historyLine}`);
+  }
+  for (const note of describeCredentialNotes(agent)) {
+    console.log(`  note: ${note}`);
   }
 
   if (!agent.chatArgs && !agent.chatProbe) {

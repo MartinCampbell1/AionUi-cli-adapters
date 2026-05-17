@@ -58,7 +58,9 @@ export const CLI_AGENT_DESCRIPTORS: Record<CliAgentBackend, CliAgentDescriptor> 
       description:
         'AionUi reuses the local Claude Code CLI session. If chat returns 401 even while auth status says logged in, refresh the Claude CLI login in Terminal.',
       commands: ['claude auth login --claudeai'],
-      verifyCommands: ['claude -p "hello" --dangerously-skip-permissions --output-format text'],
+      verifyCommands: [
+        'claude -p "hello" --setting-sources project,local --dangerously-skip-permissions --output-format text --no-session-persistence --no-chrome --disable-slash-commands --strict-mcp-config --mcp-config \'{"mcpServers":{}}\'',
+      ],
     },
   },
   codex: {
