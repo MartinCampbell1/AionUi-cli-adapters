@@ -347,6 +347,21 @@
   gap: 6px;
   flex-shrink: 1;
   min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  touch-action: pan-x;
+  white-space: nowrap;
+}
+
+.actionTools::-webkit-scrollbar {
+  display: none;
+}
+
+.actionTools > * {
+  flex: 0 0 auto;
 }
 
 .actionEntry {
@@ -361,7 +376,7 @@
   align-items: center;
   gap: 24px;
   min-width: 0;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
 }
 
 .actionConfigGroupWithDivider > :first-child {
@@ -388,6 +403,7 @@
   color: var(--color-text-2) !important;
   padding-inline: 10px !important;
   min-height: 28px !important;
+  flex: 0 0 auto !important;
 }
 
 .actionTools :global(.sendbox-model-btn:hover) {

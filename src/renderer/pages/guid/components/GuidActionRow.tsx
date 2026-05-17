@@ -210,8 +210,8 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
   );
 
   return (
-    <div className={styles.actionRow}>
-      <div className={styles.actionTools}>
+    <div className={styles.actionRow} data-testid='guid-action-row'>
+      <div className={styles.actionTools} data-testid='guid-action-tools'>
         <div className={styles.actionEntry}>
           <Dropdown trigger='hover' onVisibleChange={setIsPlusDropdownOpen} droplist={menuContent}>
             <span className='flex items-center gap-4px cursor-pointer lh-[1]'>
@@ -309,7 +309,7 @@ const GuidActionRow: React.FC<GuidActionRowProps> = ({
           </div>
         )}
       </div>
-      <div className={styles.actionSubmit}>
+      <div className={styles.actionSubmit} data-testid='guid-action-submit'>
         {speechInputNode}
         <Button
           shape='circle'
